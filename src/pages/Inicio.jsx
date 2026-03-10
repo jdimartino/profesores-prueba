@@ -19,7 +19,68 @@ export default function Inicio({ setPage }) {
     const { user } = useAuth();
     const uid = user.uid;
     const [stats, setStats] = useState({ alumnos: 0, clasesHoy: 0, cobrosPend: 0, ingresosUSD: 0 });
-    // ... skipped lines for brevity, will preserve via unchanged content ...
+    const [clasesHoy, setClasesHoy] = useState([]);
+    const [alumnoMap, setAlumnoMap] = useState({});
+    const [colorMap, setColorMap] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [nombre, setNombre] = useState('Profe');
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                // Get perfil for name
+                const perfilDoc = await getDoc(doc(db, 'profesores', uid, 'perfil', 'datos'));
+                if (perfilDoc.exists() && perfilDoc.data().nombre) {
+                    setNombre(perfilDoc.data().nombre);
+                }
+                const [almSnap, clasHoySnap] = await Promise.all([
+                    getAlumnos(uid),
+                    getClasesByDate(uid, todayStr()),
+                ]);
+
+                const alms = almSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.activo !== false);
+                const aMap = {};
+                const cMap = {};
+                alms.forEach((a, i) => { aMap[a.id] = a; cMap[a.id] = COLORS[i % COLORS.length]; });
+                setAlumnoMap(aMap);
+                setColorMap(cMap);
+
+                const clasesHoyData = clasHoySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setClasesHoy(clasesHoyData);
+
+                // Pending cobros: classes completed + not cobradas
+                const { getClasesPendientesDeCobro } = await import('../firebase/db');
+                const pendSnap = await getClasesPendientesDeCobro(uid);
+                const cobrosSnap = await import('../firebase/db').then(m => m.getCobros(uid));
+                const ingresos = cobrosSnap.docs.reduce((s, d) => s + (d.data().importe_usd || 0), 0);
+
+                // Unique pending alumnos
+                const pendAlumnos = new Set(pendSnap.docs.map(d => d.data().alumnoId));
+
+                setStats({
+                    alumnos: alms.length,
+                    clasesHoy: clasesHoyData.length,
+                    cobrosPend: pendAlumnos.size,
+                    ingresosUSD: ingresos,
+                });
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, []);
+
+    const greeting = () => {
+        const h = new Date().getHours();
+        if (h < 12) return 'Buenos días';
+        if (h < 18) return 'Buenas tardes';
+        return 'Buenas noches';
+    };
+
+    const hoy = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
     return (
         <div>
             <div style={{ marginBottom: 20 }}>

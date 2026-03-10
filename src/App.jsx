@@ -23,7 +23,7 @@ function AppInner() {
   }
 
   const pages = {
-    inicio: <Inicio />,
+    inicio: <Inicio setPage={setActivePage} />,
     alumnos: <Alumnos />,
     horario: <Horario />,
     cobros: <Cobros />,

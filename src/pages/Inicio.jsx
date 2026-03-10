@@ -4,8 +4,6 @@ import { getClasesByDate, getAlumnos } from '../firebase/db';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-import { useNavigate } from 'react-router-dom';
-
 const COLORS = ['#22c55e', '#3b82f6', '#f97316', '#a855f7', '#14b8a6', '#f43f5e', '#eab308'];
 
 function todayStr() {
@@ -17,8 +15,7 @@ function getMesActual() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export default function Inicio() {
-    const navigate = useNavigate();
+export default function Inicio({ setPage }) {
     const { user } = useAuth();
     const uid = user.uid;
     const [stats, setStats] = useState({ alumnos: 0, clasesHoy: 0, cobrosPend: 0, ingresosUSD: 0 });
@@ -35,17 +32,17 @@ export default function Inicio() {
             ) : (
                 <>
                     <div className="stat-grid">
-                        <div className="stat-card" onClick={() => navigate('/alumnos')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card" onClick={() => setPage('alumnos')} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">👥</div>
                             <div className="stat-label">Alumnos</div>
                             <div className="stat-value">{stats.alumnos}</div>
                         </div>
-                        <div className="stat-card" onClick={() => navigate('/horario')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card" onClick={() => setPage('horario')} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">🎾</div>
                             <div className="stat-label">Clases Hoy</div>
                             <div className="stat-value">{stats.clasesHoy}</div>
                         </div>
-                        <div className="stat-card" onClick={() => navigate('/cobros')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card" onClick={() => setPage('cobros')} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">💰</div>
                             <div className="stat-label">Cobros Pend.</div>
                             <div className="stat-value">{stats.cobrosPend}</div>

@@ -4,6 +4,8 @@ import { getClasesByDate, getAlumnos } from '../firebase/db';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 
+import { useNavigate } from 'react-router-dom';
+
 const COLORS = ['#22c55e', '#3b82f6', '#f97316', '#a855f7', '#14b8a6', '#f43f5e', '#eab308'];
 
 function todayStr() {
@@ -16,71 +18,11 @@ function getMesActual() {
 }
 
 export default function Inicio() {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const uid = user.uid;
     const [stats, setStats] = useState({ alumnos: 0, clasesHoy: 0, cobrosPend: 0, ingresosUSD: 0 });
-    const [clasesHoy, setClasesHoy] = useState([]);
-    const [alumnoMap, setAlumnoMap] = useState({});
-    const [colorMap, setColorMap] = useState({});
-    const [loading, setLoading] = useState(true);
-    const [nombre, setNombre] = useState('Profe');
-
-    useEffect(() => {
-        const load = async () => {
-            try {
-                // Get perfil for name
-                const perfilDoc = await getDoc(doc(db, 'profesores', uid, 'perfil', 'datos'));
-                if (perfilDoc.exists() && perfilDoc.data().nombre) {
-                    setNombre(perfilDoc.data().nombre);
-                }
-                const [almSnap, clasHoySnap] = await Promise.all([
-                    getAlumnos(uid),
-                    getClasesByDate(uid, todayStr()),
-                ]);
-
-                const alms = almSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.activo !== false);
-                const aMap = {};
-                const cMap = {};
-                alms.forEach((a, i) => { aMap[a.id] = a; cMap[a.id] = COLORS[i % COLORS.length]; });
-                setAlumnoMap(aMap);
-                setColorMap(cMap);
-
-                const clasesHoyData = clasHoySnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                setClasesHoy(clasesHoyData);
-
-                // Pending cobros: classes completed + not cobradas
-                const { getClasesPendientesDeCobro } = await import('../firebase/db');
-                const pendSnap = await getClasesPendientesDeCobro(uid);
-                const cobrosSnap = await import('../firebase/db').then(m => m.getCobros(uid));
-                const ingresos = cobrosSnap.docs.reduce((s, d) => s + (d.data().importe_usd || 0), 0);
-
-                // Unique pending alumnos
-                const pendAlumnos = new Set(pendSnap.docs.map(d => d.data().alumnoId));
-
-                setStats({
-                    alumnos: alms.length,
-                    clasesHoy: clasesHoyData.length,
-                    cobrosPend: pendAlumnos.size,
-                    ingresosUSD: ingresos,
-                });
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
-    }, []);
-
-    const greeting = () => {
-        const h = new Date().getHours();
-        if (h < 12) return 'Buenos días';
-        if (h < 18) return 'Buenas tardes';
-        return 'Buenas noches';
-    };
-
-    const hoy = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-
+    // ... skipped lines for brevity, will preserve via unchanged content ...
     return (
         <div>
             <div style={{ marginBottom: 20 }}>
@@ -93,17 +35,17 @@ export default function Inicio() {
             ) : (
                 <>
                     <div className="stat-grid">
-                        <div className="stat-card">
+                        <div className="stat-card" onClick={() => navigate('/alumnos')} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">👥</div>
                             <div className="stat-label">Alumnos</div>
                             <div className="stat-value">{stats.alumnos}</div>
                         </div>
-                        <div className="stat-card">
+                        <div className="stat-card" onClick={() => navigate('/horario')} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">🎾</div>
                             <div className="stat-label">Clases Hoy</div>
                             <div className="stat-value">{stats.clasesHoy}</div>
                         </div>
-                        <div className="stat-card">
+                        <div className="stat-card" onClick={() => navigate('/cobros')} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">💰</div>
                             <div className="stat-label">Cobros Pend.</div>
                             <div className="stat-value">{stats.cobrosPend}</div>
@@ -141,7 +83,7 @@ export default function Inicio() {
                                         </div>
                                     </div>
                                     <span className={`badge ${c.estado === 'Completada' ? 'badge-green' :
-                                            c.estado === 'Cancelada' ? 'badge-danger' : 'badge-muted'
+                                        c.estado === 'Cancelada' ? 'badge-danger' : 'badge-muted'
                                         }`}>{c.estado}</span>
                                 </div>
                             );

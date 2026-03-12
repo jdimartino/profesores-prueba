@@ -171,6 +171,9 @@ export default function Inicio({ setPage }) {
                     onSaved={() => { setShowModal(false); loadData(); }}
                 />
             )}
+            <div style={{ textAlign: 'center', marginTop: 40, marginBottom: 80 }}>
+                <span className="text-xs text-muted" style={{ opacity: 0.6 }}>Desarrollado por #JDMRules 🎾</span>
+            </div>
         </div>
     );
 }

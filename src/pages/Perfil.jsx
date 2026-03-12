@@ -8,7 +8,7 @@ export default function Perfil() {
     const { user } = useAuth();
     const uid = user.uid;
     const [nombre, setNombre] = useState('');
-    const [tasa, setTasa] = useState('');
+    const [whatsapp, setWhatsapp] = useState('');
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
@@ -19,7 +19,7 @@ export default function Perfil() {
                 if (snap.exists()) {
                     const d = snap.data();
                     setNombre(d.nombre || '');
-                    setTasa(d.tasa_cambio || '');
+                    setWhatsapp(d.whatsapp || '');
                 }
             } catch { }
         };
@@ -31,7 +31,7 @@ export default function Perfil() {
         try {
             await setDoc(doc(db, 'profesores', uid, 'perfil', 'datos'), {
                 nombre,
-                tasa_cambio: Number(tasa) || 1,
+                whatsapp,
                 email: user.email,
             }, { merge: true });
             setSaved(true);
@@ -80,22 +80,14 @@ export default function Perfil() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Tasa USD → Bs</label>
-                    <div style={{ position: 'relative' }}>
-                        <span style={{
-                            position: 'absolute', left: 12, top: '50%',
-                            transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '0.85rem'
-                        }}>1 $ =</span>
-                        <input
-                            className="form-input"
-                            type="number"
-                            value={tasa}
-                            onChange={e => setTasa(e.target.value)}
-                            placeholder="Ej: 40.00"
-                            style={{ paddingLeft: 56 }}
-                        />
-                    </div>
-                    <span className="text-xs text-muted mt-4">Actualiza la tasa manualmente según el cambio del día</span>
+                    <label className="form-label">Número de WhatsApp</label>
+                    <input
+                        className="form-input"
+                        value={whatsapp}
+                        onChange={e => setWhatsapp(e.target.value)}
+                        placeholder="Ej: +58 412 1234567"
+                    />
+                    <span className="text-xs text-muted mt-4">Este número se usará para comunicaciones oficiales</span>
                 </div>
             </div>
 

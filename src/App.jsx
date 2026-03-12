@@ -5,12 +5,21 @@ import Inicio from './pages/Inicio';
 import Alumnos from './pages/Alumnos';
 import Horario from './pages/Horario';
 import Cobros from './pages/Cobros';
+import Ingresos from './pages/Ingresos';
 import Perfil from './pages/Perfil';
 import BottomNav from './components/BottomNav';
 
 function AppInner() {
   const { user } = useAuth();
   const [activePage, setActivePage] = useState('inicio');
+  const [horarioView, setHorarioView] = useState('diaria');
+
+  const handlePageChange = (page, params = {}) => {
+    if (page === 'horario' && params.view) {
+      setHorarioView(params.view);
+    }
+    setActivePage(page);
+  };
 
   // Loading state
   if (user === undefined) {
@@ -23,10 +32,11 @@ function AppInner() {
   }
 
   const pages = {
-    inicio: <Inicio setPage={setActivePage} />,
+    inicio: <Inicio setPage={handlePageChange} />,
     alumnos: <Alumnos />,
-    horario: <Horario />,
+    horario: <Horario initialView={horarioView} setView={setHorarioView} />,
     cobros: <Cobros />,
+    ingresos: <Ingresos setPage={handlePageChange} />,
     perfil: <Perfil />,
   };
 

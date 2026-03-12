@@ -3,11 +3,18 @@ import { useAuth } from '../context/AuthContext';
 import { getClasesByDate, getAlumnos } from '../firebase/db';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
+import NuevaClaseModal from '../components/NuevaClaseModal';
 
 const COLORS = ['#22c55e', '#3b82f6', '#f97316', '#a855f7', '#14b8a6', '#f43f5e', '#eab308'];
 
 function todayStr() {
     return new Date().toISOString().split('T')[0];
+}
+
+function getStatusColor(estado) {
+    if (estado === 'Suspendida') return '#f43f5e';
+    if (estado === 'Completada') return '#22c55e';
+    return '#eab308';
 }
 
 function getMesActual() {
@@ -18,58 +25,58 @@ function getMesActual() {
 export default function Inicio({ setPage }) {
     const { user } = useAuth();
     const uid = user.uid;
-    const [stats, setStats] = useState({ alumnos: 0, clasesHoy: 0, cobrosPend: 0, ingresosUSD: 0 });
+    const [stats, setStats] = useState({ alumnos: 0, clasesHoy: 0, cobrosPend: 0 });
     const [clasesHoy, setClasesHoy] = useState([]);
     const [alumnoMap, setAlumnoMap] = useState({});
     const [colorMap, setColorMap] = useState({});
     const [loading, setLoading] = useState(true);
     const [nombre, setNombre] = useState('Profe');
+    const [showModal, setShowModal] = useState(false);
+
+    const loadData = async () => {
+        try {
+            // Get perfil for name
+            const perfilDoc = await getDoc(doc(db, 'profesores', uid, 'perfil', 'datos'));
+            if (perfilDoc.exists() && perfilDoc.data().nombre) {
+                setNombre(perfilDoc.data().nombre);
+            }
+            const [almSnap, clasHoySnap] = await Promise.all([
+                getAlumnos(uid),
+                getClasesByDate(uid, todayStr()),
+            ]);
+
+            const alms = almSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.activo !== false);
+            const aMap = {};
+            const cMap = {};
+            alms.forEach((a, i) => { aMap[a.id] = a; cMap[a.id] = COLORS[i % COLORS.length]; });
+            setAlumnoMap(aMap);
+            setColorMap(cMap);
+
+            const clasesHoyData = clasHoySnap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .filter(c => !c.cobrada && c.estado !== 'Pagada');
+            setClasesHoy(clasesHoyData);
+
+            const { getClasesPendientesDeCobro } = await import('../firebase/db');
+            const pendSnap = await getClasesPendientesDeCobro(uid);
+
+            // Unique pending alumnos
+            const pendAlumnos = new Set(pendSnap.docs.map(d => d.data().alumnoId));
+
+            setStats({
+                alumnos: alms.length,
+                clasesHoy: clasesHoyData.length,
+                cobrosPend: pendAlumnos.size
+            });
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const load = async () => {
-            try {
-                // Get perfil for name
-                const perfilDoc = await getDoc(doc(db, 'profesores', uid, 'perfil', 'datos'));
-                if (perfilDoc.exists() && perfilDoc.data().nombre) {
-                    setNombre(perfilDoc.data().nombre);
-                }
-                const [almSnap, clasHoySnap] = await Promise.all([
-                    getAlumnos(uid),
-                    getClasesByDate(uid, todayStr()),
-                ]);
-
-                const alms = almSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.activo !== false);
-                const aMap = {};
-                const cMap = {};
-                alms.forEach((a, i) => { aMap[a.id] = a; cMap[a.id] = COLORS[i % COLORS.length]; });
-                setAlumnoMap(aMap);
-                setColorMap(cMap);
-
-                const clasesHoyData = clasHoySnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                setClasesHoy(clasesHoyData);
-
-                // Pending cobros: classes completed + not cobradas
-                const { getClasesPendientesDeCobro } = await import('../firebase/db');
-                const pendSnap = await getClasesPendientesDeCobro(uid);
-                const cobrosSnap = await import('../firebase/db').then(m => m.getCobros(uid));
-                const ingresos = cobrosSnap.docs.reduce((s, d) => s + (d.data().importe_usd || 0), 0);
-
-                // Unique pending alumnos
-                const pendAlumnos = new Set(pendSnap.docs.map(d => d.data().alumnoId));
-
-                setStats({
-                    alumnos: alms.length,
-                    clasesHoy: clasesHoyData.length,
-                    cobrosPend: pendAlumnos.size,
-                    ingresosUSD: ingresos,
-                });
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
+        loadData();
     }, []);
 
     const greeting = () => {
@@ -98,9 +105,9 @@ export default function Inicio({ setPage }) {
                             <div className="stat-label">Alumnos</div>
                             <div className="stat-value">{stats.alumnos}</div>
                         </div>
-                        <div className="stat-card" onClick={() => setPage('horario')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card" onClick={() => setPage('horario', { view: 'semanal' })} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">🎾</div>
-                            <div className="stat-label">Clases Hoy</div>
+                            <div className="stat-label">Clases</div>
                             <div className="stat-value">{stats.clasesHoy}</div>
                         </div>
                         <div className="stat-card" onClick={() => setPage('cobros')} style={{ cursor: 'pointer' }}>
@@ -108,10 +115,9 @@ export default function Inicio({ setPage }) {
                             <div className="stat-label">Cobros Pend.</div>
                             <div className="stat-value">{stats.cobrosPend}</div>
                         </div>
-                        <div className="stat-card">
+                        <div className="stat-card" onClick={() => setPage('ingresos')} style={{ cursor: 'pointer' }}>
                             <div className="stat-icon">📈</div>
-                            <div className="stat-label">Ingresos</div>
-                            <div className="stat-value" style={{ fontSize: '1.2rem' }}>${stats.ingresosUSD.toFixed(0)}</div>
+                            <div className="stat-label" style={{ marginTop: 8, fontSize: '1rem', fontWeight: 'bold' }}>Ingresos</div>
                         </div>
                     </div>
 
@@ -125,7 +131,7 @@ export default function Inicio({ setPage }) {
                     ) : (
                         clasesHoy.map(c => {
                             const a = alumnoMap[c.alumnoId];
-                            const color = colorMap[c.alumnoId] || '#22c55e';
+                            const color = getStatusColor(c.estado);
                             return (
                                 <div key={c.id} className="list-item">
                                     <div style={{
@@ -141,13 +147,29 @@ export default function Inicio({ setPage }) {
                                         </div>
                                     </div>
                                     <span className={`badge ${c.estado === 'Completada' ? 'badge-green' :
-                                        c.estado === 'Cancelada' ? 'badge-danger' : 'badge-muted'
+                                        c.estado === 'Suspendida' ? 'badge-danger' : 'badge-muted'
                                         }`}>{c.estado}</span>
                                 </div>
                             );
                         })
                     )}
                 </>
+            )}
+
+            <button className="fab" onClick={() => setShowModal(true)} style={{ width: 'auto', borderRadius: '28px', padding: '0 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span style={{ fontSize: '1rem', fontWeight: 600 }}>Agregar nueva clase</span>
+            </button>
+
+            {showModal && (
+                <NuevaClaseModal
+                    uid={uid}
+                    defaultDate={todayStr()}
+                    onClose={() => setShowModal(false)}
+                    onSaved={() => { setShowModal(false); loadData(); }}
+                />
             )}
         </div>
     );

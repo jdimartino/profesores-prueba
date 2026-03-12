@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getAlumnos, addAlumno, updateAlumno, deleteAlumno } from '../firebase/db';
 
-const NIVELES = ['Principiante', 'Intermedio', 'Avanzado', 'Competición'];
+const NIVELES = ['Principiante', '7ma', '6ta', '5ta', '4ta'];
 const COLORS = ['#22c55e', '#3b82f6', '#f97316', '#a855f7', '#14b8a6', '#f43f5e', '#eab308'];
 
 function getInitials(nombre = '', apellido = '') {
@@ -12,9 +12,10 @@ function getInitials(nombre = '', apellido = '') {
 function nivelBadge(nivel) {
     const map = {
         'Principiante': 'badge-info',
-        'Intermedio': 'badge-warning',
-        'Avanzado': 'badge-green',
-        'Competición': 'badge-danger',
+        '7ma': 'badge-warning',
+        '6ta': 'badge-green',
+        '5ta': 'badge-danger',
+        '4ta': 'badge-purple',
     };
     return map[nivel] || 'badge-muted';
 }
@@ -66,7 +67,7 @@ export default function Alumnos() {
             ) : (
                 alumnos.map((a, i) => (
                     <div key={a.id} className="list-item" onClick={() => handleEdit(a)}>
-                        <div className="avatar" style={{ background: COLORS[i % COLORS.length] }}>
+                        <div className="avatar" style={{ background: COLORS[i % COLORS.length], backgroundImage: a.photoURL ? `url(${a.photoURL})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', color: a.photoURL ? 'transparent' : undefined }}>
                             {getInitials(a.nombre, a.apellido)}
                         </div>
                         <div className="list-item-content">
@@ -110,15 +111,69 @@ function AlumnoModal({ uid, initial, onClose, onSaved }) {
     const [email, setEmail] = useState(initial?.email || '');
     const [nivel, setNivel] = useState(initial?.nivel || 'Principiante');
     const [saving, setSaving] = useState(false);
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(initial?.photoURL || null);
+
+    const handlePhotoChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Resize to max 150x150 for Base64 storage
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 150;
+                    const MAX_HEIGHT = 150;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Get base64 string, lower quality to save space
+                    const base64String = canvas.toDataURL('image/jpeg', 0.7);
+                    setPhotoFile(base64String);
+                    setPhotoPreview(base64String);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleSave = async () => {
         if (!nombre || !apellido) return;
         setSaving(true);
-        const data = { nombre, apellido, telefono, email, nivel };
         try {
+            let photoURL = initial?.photoURL || null;
+            if (photoFile) {
+                photoURL = typeof photoFile === 'string' ? photoFile : null; 
+            }
+            
+            const data = { nombre, apellido, telefono, email, nivel };
+            if (photoURL) data.photoURL = photoURL;
+            
             if (initial) await updateAlumno(uid, initial.id, data);
             else await addAlumno(uid, data);
             onSaved();
+        } catch (error) {
+            console.error("Error saving alumno: ", error);
+            alert("Error al guardar. Intenta de nuevo.");
         } finally {
             setSaving(false);
         }
@@ -136,6 +191,23 @@ function AlumnoModal({ uid, initial, onClose, onSaved }) {
                     >
                         ✕ Cancelar
                     </button>
+                </div>
+
+                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '16px' }}>
+                    <div 
+                        style={{
+                            width: 80, height: 80, borderRadius: '50%', background: '#eee', 
+                            backgroundImage: photoPreview ? `url(${photoPreview})` : 'none', 
+                            backgroundSize: 'cover', backgroundPosition: 'center',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', border: '2px solid #ddd', overflow: 'hidden', position: 'relative'
+                        }}
+                        onClick={() => document.getElementById('photoInput').click()}
+                    >
+                        {!photoPreview && <span style={{ fontSize: '24px', color: '#999' }}>📷</span>}
+                    </div>
+                    <input id="photoInput" type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', cursor: 'pointer' }} onClick={() => document.getElementById('photoInput').click()}>Toca para cambiar foto</span>
                 </div>
 
                 <div className="form-group">

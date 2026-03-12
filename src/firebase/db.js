@@ -21,6 +21,12 @@ export const deleteAlumno = (uid, id) =>
 export const getClases = (uid) =>
     getDocs(query(collection(db, 'profesores', uid, 'clases'), orderBy('fecha', 'desc')));
 
+export const getClaseById = async (uid, id) => {
+    const { getDoc, doc } = await import('firebase/firestore');
+    const snap = await getDoc(doc(db, 'profesores', uid, 'clases', id));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
 export const getClasesByDate = (uid, dateStr) =>
     getDocs(query(
         collection(db, 'profesores', uid, 'clases'),

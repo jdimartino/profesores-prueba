@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getClasesByDateStartEnd, updateClaseById, getAlumnos, getClasesByDate } from '../firebase/db';
+import NuevaClaseModal from '../components/NuevaClaseModal';
 
 // Colores por alumno (ciclado)
 const COLORS = ['#22c55e', '#3b82f6', '#f97316', '#a855f7', '#14b8a6', '#f43f5e', '#eab308'];
@@ -11,6 +12,12 @@ function dateToStr(date) {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
 }
 
 function formatDay(date) {
@@ -28,16 +35,32 @@ function getStartOfMonth(date) {
     return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-export default function Horario() {
+function getStatusColor(estado) {
+    if (estado === 'Suspendida') return '#f43f5e'; // Rojo
+    if (estado === 'Completada') return '#22c55e'; // Verde
+    return '#eab308'; // Amarillo (Pendiente por defecto)
+}
+
+export default function Horario({ initialView, setView }) {
     const { user } = useAuth();
     const uid = user.uid;
-    const [viewMode, setViewMode] = useState('diaria'); // diaria, semanal, mensual
+    const [viewMode, setViewModeInternal] = useState(initialView || 'diaria'); 
+
+    const setViewMode = (mode) => {
+        setViewModeInternal(mode);
+        if (setView) setView(mode);
+    };
+
+    useEffect(() => {
+        if (initialView) setViewModeInternal(initialView);
+    }, [initialView]);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [clases, setClases] = useState([]);
     const [alumnos, setAlumnos] = useState([]);
     const [alumnoMap, setAlumnoMap] = useState({});
     const [colorMap, setColorMap] = useState({});
     const [showModal, setShowModal] = useState(false);
+    const [editClaseData, setEditClaseData] = useState(null);
     const [showDetail, setShowDetail] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -67,7 +90,9 @@ export default function Horario() {
             setAlumnoMap(aMap);
             setColorMap(cMap);
 
-            const loadedClases = clasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const loadedClases = clasSnap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .filter(c => !c.cobrada && c.estado !== 'Pagada');
             setClases(loadedClases);
         } finally {
             setLoading(false);
@@ -88,6 +113,9 @@ export default function Horario() {
         await updateClaseById(uid, claseId, { estado });
         await loadData();
         setShowDetail(null);
+        if (estado === 'Completada') {
+            alert('¡Clase marcada como completada! Queda pendiente de pago en la sección de cobros.');
+        }
     };
 
     const renderNavLabel = () => {
@@ -111,6 +139,19 @@ export default function Horario() {
                 <button className={`seg-btn ${viewMode === 'diaria' ? 'active' : ''}`} onClick={() => setViewMode('diaria')}>Diaria</button>
                 <button className={`seg-btn ${viewMode === 'semanal' ? 'active' : ''}`} onClick={() => setViewMode('semanal')}>Semanal</button>
                 <button className={`seg-btn ${viewMode === 'mensual' ? 'active' : ''}`} onClick={() => setViewMode('mensual')}>Mensual</button>
+            </div>
+
+            {/* Leyenda de colores */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 15, marginBottom: 15, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#eab308' }} /> Clase Agendada
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#22c55e' }} /> Completada
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#f43f5e' }} /> Suspendida
+                </div>
             </div>
 
             {/* Navigator */}
@@ -139,7 +180,7 @@ export default function Horario() {
                                         </span>
                                         {clasesInHour.map(c => {
                                             const durH = (c.duracion_min || 60) / 60;
-                                            const color = colorMap[c.alumnoId] || '#22c55e';
+                                            const color = getStatusColor(c.estado);
                                             const alumno = alumnoMap[c.alumnoId];
                                             let topOffset = 4;
                                             if (c.horaInicio) {
@@ -154,12 +195,13 @@ export default function Horario() {
                                                         background: color,
                                                         height: Math.max(durH * 64 - 4, 36),
                                                         top: topOffset,
-                                                        opacity: c.estado === 'Cancelada' ? 0.4 : 1,
+                                                        opacity: c.estado === 'Suspendida' ? 0.4 : 1,
                                                     }}
                                                     onClick={() => setShowDetail(c)}
                                                 >
                                                     <div className="class-block-name">
                                                         {alumno ? `${alumno.nombre} ${alumno.apellido}` : 'Alumno'}
+                                                        {c.estado === 'Suspendida' && ' (Suspendida)'}
                                                     </div>
                                                     <div className="class-block-time">
                                                         {c.horaInicio} · {c.duracion_min} min
@@ -210,7 +252,7 @@ export default function Horario() {
                                                 if (h < HOURS[0] || h > HOURS[HOURS.length - 1]) return null;
 
                                                 const durH = (c.duracion_min || 60) / 60;
-                                                const color = colorMap[c.alumnoId] || '#22c55e';
+                                                const color = getStatusColor(c.estado);
                                                 const alumno = alumnoMap[c.alumnoId];
                                                 const topOffset = ((h - HOURS[0]) * 60) + (m / 60) * 60;
 
@@ -222,12 +264,13 @@ export default function Horario() {
                                                             background: color,
                                                             height: Math.max(durH * 60 - 2, 24),
                                                             top: topOffset,
-                                                            opacity: c.estado === 'Cancelada' ? 0.4 : 1,
+                                                            opacity: c.estado === 'Suspendida' ? 0.4 : 1,
                                                         }}
                                                         onClick={() => setShowDetail(c)}
                                                     >
                                                         <div className="weekly-class-name">
                                                             {alumno ? alumno.nombre : 'Al'}
+                                                            {c.estado === 'Suspendida' && ' (Susp.)'}
                                                         </div>
                                                         <div>{c.horaInicio}</div>
                                                     </div>
@@ -271,15 +314,15 @@ export default function Horario() {
                                             <div className="monthly-events">
                                                 {dayClases.map(c => {
                                                     const alumno = alumnoMap[c.alumnoId];
-                                                    const color = colorMap[c.alumnoId] || '#22c55e';
+                                                    const color = getStatusColor(c.estado);
                                                     return (
                                                         <div
                                                             key={c.id}
                                                             className="monthly-event-dot"
-                                                            style={{ borderColor: color, opacity: c.estado === 'Cancelada' ? 0.4 : 1 }}
+                                                            style={{ borderColor: color, opacity: c.estado === 'Suspendida' ? 0.4 : 1 }}
                                                             onClick={() => setShowDetail(c)}
                                                         >
-                                                            {c.horaInicio} {alumno ? alumno.nombre : ''}
+                                                            {c.horaInicio} {alumno ? alumno.nombre : ''} {c.estado === 'Suspendida' ? '(S)' : ''}
                                                         </div>
                                                     )
                                                 })}
@@ -313,16 +356,16 @@ export default function Horario() {
             </button>
 
             {/* Nueva Clase Modal */}
-            {showModal && (
+            {(showModal || editClaseData) && (
                 <NuevaClaseModal
                     uid={uid}
                     defaultDate={dateToStr(currentDate)}
-                    onClose={() => setShowModal(false)}
-                    onSaved={() => { setShowModal(false); loadData(); }}
+                    initialData={editClaseData}
+                    onClose={() => { setShowModal(false); setEditClaseData(null); }}
+                    onSaved={() => { setShowModal(false); setEditClaseData(null); loadData(); }}
                 />
             )}
 
-            {/* Detail Modal */}
             {showDetail && (
                 <div className="overlay" onClick={() => setShowDetail(null)}>
                     <div className="bottom-sheet" onClick={e => e.stopPropagation()}>
@@ -332,151 +375,35 @@ export default function Horario() {
                                 ? `${alumnoMap[showDetail.alumnoId].nombre} ${alumnoMap[showDetail.alumnoId].apellido}`
                                 : 'Clase'}
                         </div>
-                        <p className="text-secondary">{showDetail.fechaStr} · {showDetail.horaInicio} · {showDetail.duracion_min} min</p>
+                        <p className="text-secondary">{formatDate(showDetail.fechaStr)} · {showDetail.horaInicio} · {showDetail.duracion_min} min</p>
                         {showDetail.cancha && <p className="text-secondary mt-4">Cancha: {showDetail.cancha}</p>}
                         {showDetail.notas && <p className="text-secondary mt-4">📝 {showDetail.notas}</p>}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
-                            <button className="btn btn-primary btn-full"
-                                onClick={() => markEstado(showDetail.id, 'Completada')}>✅ Marcar como Completada</button>
+                        
+                        {showDetail.estado === 'Suspendida' ? (
+                            <div style={{ marginTop: 20, textAlign: 'center', color: '#f43f5e', fontWeight: 600 }}>
+                                ❌ Esta clase fue suspendida
+                            </div>
+                        ) : showDetail.estado === 'Completada' ? (
+                            <div style={{ marginTop: 20, textAlign: 'center', color: 'var(--green)', fontWeight: 600 }}>
+                                ✅ Clase completada (pendiente de cobro)
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
+                                <button className="btn btn-primary btn-full"
+                                    onClick={() => markEstado(showDetail.id, 'Completada')}>✅ Marcar como Completada</button>
+                                <button className="btn btn-outline btn-full" style={{ borderColor: '#f43f5e', color: '#f43f5e' }}
+                                    onClick={() => markEstado(showDetail.id, 'Suspendida')}>❌ Suspender clase</button>
+                            </div>
+                        )}
+                        <div style={{ marginTop: (showDetail.estado === 'Suspendida' || showDetail.estado === 'Completada') ? 20 : 10 }}>
+                            <button className="btn btn-outline btn-full" style={{ marginBottom: 10 }}
+                                onClick={() => { setEditClaseData(showDetail); setShowDetail(null); }}>✏️ Editar Clase</button>
                             <button className="btn btn-outline btn-full"
-                                onClick={() => markEstado(showDetail.id, 'Cancelada')}>❌ Cancelar clase</button>
+                                onClick={() => setShowDetail(null)}>Cerrar</button>
                         </div>
                     </div>
                 </div>
             )}
-        </div>
-    );
-}
-
-function NuevaClaseModal({ uid, defaultDate, onClose, onSaved }) {
-    const [alumnos, setAlumnos] = useState([]);
-    const [alumnoId, setAlumnoId] = useState('');
-    const [fecha, setFecha] = useState(defaultDate);
-    const [hora, setHora] = useState('09:00');
-    const [duracion, setDuracion] = useState(60);
-    const [cancha, setCancha] = useState('Cancha 1');
-    const [tarifa, setTarifa] = useState('');
-    const [notas, setNotas] = useState('');
-    const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        getAlumnos(uid).then(snap => {
-            setAlumnos(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.activo !== false));
-        });
-    }, []);
-
-    const handleSave = async () => {
-        if (!alumnoId || !fecha || !hora || !tarifa) return;
-        setSaving(true);
-        try {
-            await addClase(uid, {
-                alumnoId, fechaStr: fecha, horaInicio: hora,
-                duracion_min: duracion, cancha, notas, tarifa: Number(tarifa),
-                estado: 'Pendiente', cobrada: false,
-            });
-            onSaved();
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <div className="overlay" onClick={onClose}>
-            <div className="bottom-sheet" onClick={e => e.stopPropagation()}>
-                <div className="sheet-handle" />
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <div className="sheet-title" style={{ margin: 0 }}>Nueva Clase</div>
-                    <button
-                        onClick={onClose}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 8 }}
-                    >
-                        ✕ Cancelar
-                    </button>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">Alumno</label>
-                    <select className="form-select" value={alumnoId} onChange={e => setAlumnoId(e.target.value)}>
-                        <option value="">Seleccionar alumno...</option>
-                        {alumnos.map(a => <option key={a.id} value={a.id}>{a.nombre} {a.apellido}</option>)}
-                    </select>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">📅 Fecha</label>
-                    <div style={{ position: 'relative' }}>
-                        <input
-                            type="date"
-                            className="form-input"
-                            value={fecha}
-                            onChange={e => setFecha(e.target.value)}
-                            style={{ paddingLeft: 44, colorScheme: 'dark', cursor: 'pointer' }}
-                        />
-                        <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 20, pointerEvents: 'none' }}>📅</span>
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">🕒 Hora inicio</label>
-                    <div style={{ position: 'relative' }}>
-                        <input
-                            type="time"
-                            className="form-input"
-                            value={hora}
-                            step="3600"
-                            onChange={e => {
-                                // Force minutes to be 00
-                                const [h] = e.target.value.split(':');
-                                if (h) setHora(`${h}:00`);
-                            }}
-                            style={{ paddingLeft: 44, colorScheme: 'dark', cursor: 'pointer' }}
-                        />
-                        <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 20, pointerEvents: 'none' }}>🕒</span>
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">Duración</label>
-                    <div className="seg-control">
-                        {[60, 120, 180].map(d => (
-                            <button key={d} className={`seg-btn ${duracion === d ? 'active' : ''}`} onClick={() => setDuracion(d)}>
-                                {d / 60} {d === 60 ? 'Hora' : 'Horas'}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">Cancha</label>
-                    <div className="seg-control">
-                        {['1', '2', '3', '4', '5'].map(num => {
-                            const cName = `Cancha ${num}`;
-                            return (
-                                <button key={cName} className={`seg-btn ${cancha === cName ? 'active' : ''}`} onClick={() => setCancha(cName)}>
-                                    {num}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">Tarifa de la clase (USD)</label>
-                    <div style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--green)', fontWeight: 700 }}>$</span>
-                        <input className="form-input" type="number" value={tarifa} onChange={e => setTarifa(e.target.value)} placeholder="0.00" style={{ paddingLeft: 28 }} />
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">Notas (opcional)</label>
-                    <textarea className="form-textarea" value={notas} onChange={e => setNotas(e.target.value)} placeholder="Ejercicios, observaciones..." />
-                </div>
-
-                <button className="btn btn-primary btn-full" onClick={handleSave} disabled={saving || !alumnoId || !tarifa}>
-                    {saving ? 'Guardando...' : 'Guardar Clase'}
-                </button>
-            </div>
         </div>
     );
 }

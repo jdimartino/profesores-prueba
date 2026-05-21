@@ -14,10 +14,17 @@ export default function Login() {
         setError('');
         setLoading(true);
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            let loginEmail = email.trim().toLowerCase();
+            if (loginEmail === 'admin') {
+                loginEmail = 'admin@tenisprofe.com';
+            } else if (!loginEmail.includes('@')) {
+                // Si escriben un nombre de usuario básico, le añadimos el dominio
+                loginEmail = `${loginEmail}@tenisprofe.com`;
+            }
+            await signInWithEmailAndPassword(auth, loginEmail, password);
         } catch (err) {
             const msgs = {
-                'auth/invalid-credential': 'Email o contraseña incorrectos.',
+                'auth/invalid-credential': 'Usuario o contraseña incorrectos.',
                 'auth/user-not-found': 'Usuario no registrado.',
                 'auth/wrong-password': 'Contraseña incorrecta.',
                 'auth/too-many-requests': 'Demasiados intentos. Espera un momento.',
@@ -43,15 +50,15 @@ export default function Login() {
 
                 <form onSubmit={handleLogin}>
                     <div className="form-group">
-                        <label className="form-label">Email</label>
+                        <label className="form-label">Usuario / Email</label>
                         <input
-                            type="email"
+                            type="text"
                             className="form-input"
-                            placeholder="tu@email.com"
+                            placeholder="admin o tu@email.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
-                            autoComplete="email"
+                            autoComplete="username"
                         />
                     </div>
 
